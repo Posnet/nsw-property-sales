@@ -8,7 +8,6 @@ curl -Lkv 'https://valuation.property.nsw.gov.au/embed/propertySalesInformation'
 | grep -E -o 'href="[^"]+(zip|pdf)"' \
 | cut -f2 -d'"' \
 | sort \
-| head -n 10 \
 | wget --continue -i -
 
 mkdir -p pdfs
@@ -33,7 +32,7 @@ done
 
 find extracted -name "*.DAT" -exec mv -f {} data/ \;
 
-# rm -rf extracted
+rm -rf extracted
 
 printf "Fetched on: %s\n" "$when" > when.txt
 
