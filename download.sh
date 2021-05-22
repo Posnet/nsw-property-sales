@@ -5,7 +5,7 @@ shopt -s globstar
 when=$(date)
 base="https://valuation.property.nsw.gov.au/embed/propertySalesInformation"
 echo "Fetching sales data (for %s)" "$when"
-curl $base  \
+curl -Lkv $base  \
 | grep -E -o 'href="[^"]+(zip|pdf)"' \
 | cut -f2 -d'"' \
 | sort \
