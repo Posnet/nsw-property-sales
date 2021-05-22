@@ -34,5 +34,7 @@ find extracted -name "*.DAT" -exec mv -f {} data/ \;
 
 rm -rf extracted
 
+tar -czvf data.tgz data
+
 printf "Fetched on: %s\n" "$when" > when.txt
 
