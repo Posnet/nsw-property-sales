@@ -200,20 +200,18 @@ def progress_tracker(total=None, operation="Working"):
         if _bytes is not None:
             bytes_downloaded[0] += _bytes
             throughput = (bytes_downloaded[0] / 1024 / 1024) / elapsed_time
-            throughput = f" - {throughput:.2f} MB/s"
+            throughput = f" - {throughput:.2f} MiB/s"
             btotal = bytes_downloaded[0] / 1024 / 1024
             if btotal > 1024:
-                btotal = f" - {btotal/1024:.2f}GB"
+                btotal = f" - {btotal/1024:.2f}GiB"
             else:
-                btotal = f" - {btotal:.1f}MB"
+                btotal = f" - {btotal:.1f}MiB"
 
         else:
             throughput = ""
             btotal = ""
 
-        outstr = (
-            f"\r{operation}: {progress[0]}{_total} {percentage}{throughput}{btotal}"
-        )
+        outstr = f"\r{operation}: {progress[0]}{_total} files {percentage}{throughput}{btotal}"
         print(
             outstr.ljust(80),
             end="",
@@ -582,8 +580,8 @@ def main():
         process_downloaded_files(args.download_path, args.data_path)
         print(f"Converting to CSV. (to '{args.csv_path}')")
         data_to_csv(args.data_path, args.csv_path)
-        print(f"Writing manifest. (to '{args.manifest_path}')")
-        write_manifest(args.manifest_path, when)
+        print(f"Writing manifest. (to '{args.manifest_file}')")
+        write_manifest(args.manifest_file, when)
     finally:
         if not args.keep_raw_files:
             print(f"Removing raw files. ('{args.download_path}', '{args.data_path}')")
