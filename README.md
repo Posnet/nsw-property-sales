@@ -12,7 +12,7 @@ By default the script just deletes the raw files and keep only the final CSV.
 To keep the raw files, pass the argument `--keep-raw-files`.
 
 If you want to explore the data without using something like `pandas` I recommend either
-`https://www.visidata.org/install/` or `https://github.com/BurntSushi/xsv`
+https://www.visidata.org/install/ or https://github.com/BurntSushi/xsv
 
 
 Fair License
