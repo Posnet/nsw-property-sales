@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-import os
-import shutil
-import zipfile
-import csv
-from datetime import datetime
-from urllib import request, error
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-import time
-import re
 import argparse
+import csv
+import os
+import re
+import shutil
+import time
+import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from pathlib import Path
+from urllib import request, error
 
 BASE_URL = "https://valuation.property.nsw.gov.au/embed/propertySalesInformation"
 
@@ -513,7 +513,7 @@ def data_to_csv(base, out_path):
     paths = list(Path(base).glob("*.DAT"))
     tracker = progress_tracker(len(paths), "Parsing")
     with open(out_path, "w", newline="") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=COLUMNS)
+        writer = csv.DictWriter(csvfile, fieldnames=COLUMNS, extrasaction="ignore")
         writer.writeheader()
         for path in paths:
             res = handle_path(path)
@@ -528,7 +528,7 @@ def write_manifest(manifest_path, when):
     with open(manifest_path, "w") as f:
         f.write(f"NSW Land Data Manifest (as of {when})\n\n")
         for line in MANIFEST:
-            f.write(line + "\n")
+            f.write(str(line) + "\n")
 
 
 def main():
@@ -536,24 +536,30 @@ def main():
     parser = argparse.ArgumentParser(description="Process some integers.")
     parser.add_argument(
         "--download_path",
-        type=str,
+        type=Path,
         default="./downloads",
         help="Path where downloads will be stored",
     )
     parser.add_argument(
         "--data_path",
-        type=str,
+        type=Path,
         default="./extracted",
         help="Path where extracted data will be stored",
     )
     parser.add_argument(
         "--csv_path",
-        type=str,
+        type=Path,
         default="./land_value.csv",
         help="Path to output CSV file",
     )
     parser.add_argument(
-        "--pdf_path", type=str, default="./pdfs", help="Path to PDF files"
+        "--pdf_path", type=Path, default="./pdfs", help="Path to PDF files"
+    )
+    parser.add_argument(
+        "--manifest_file",
+        type=Path,
+        default="./manifest.txt",
+        help="A manifest of all files donwloaded, and parsed.",
     )
     parser.add_argument(
         "--keep_raw_files",
@@ -561,39 +567,28 @@ def main():
         default=False,
         help="Keep the raw data directories",
     )
-    parser.add_argument(
-        "--manifest_file",
-        type=str,
-        default="./manifest.txt",
-        help="A manifest of all files donwloaded, and parsed.",
-    )
 
     args = parser.parse_args()
-
-    when = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    download_path = Path(args.download_path)
-    download_path.mkdir(parents=True, exist_ok=True)
-    data_path = Path(args.data_path)
-    data_path.mkdir(parents=True, exist_ok=True)
-    csv_path = Path(args.csv_path)
-    pdf_path = Path(args.pdf_path)
-    pdf_path.mkdir(parents=True, exist_ok=True)
-    manifest_path = Path(args.manifest_file)
+    args.download_path.mkdir(parents=True, exist_ok=True)
+    args.data_path.mkdir(parents=True, exist_ok=True)
+    args.pdf_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        print(f"Fetching sales data (as of {when}).", flush=True)
-        fetch_data(download_path, pdf_path)
-        print("Extracting data files.", flush=True)
-        process_downloaded_files(download_path, data_path)
-        print(f"Converting to CSV. ({csv_path})", flush=True)
-        data_to_csv(data_path, csv_path)
-        print(f"Writing manifest. {manifest_path}", flush=True)
-        write_manifest(manifest_path, when)
+        when = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"NSW Bulk property sales information downloader. (as of{when})")
+        print(f"Fetching sales data (to {args.download_path}).")
+        fetch_data(args.download_path, args.pdf_path)
+        print(f"Extracting data files. (to {args.data_path})")
+        process_downloaded_files(args.download_path, args.data_path)
+        print(f"Converting to CSV. (to {args.csv_path})")
+        data_to_csv(args.data_path, args.csv_path)
+        print(f"Writing manifest. (to {args.manifest_path})")
+        write_manifest(args.manifest_path, when)
     finally:
         if not args.keep_raw_files:
-            print("Removing raw files.")
-            shutil.rmtree(download_path)
-            shutil.rmtree(data_path)
+            print(f"Removing raw files. ({args.download_path}, {args.data_path})")
+            shutil.rmtree(args.download_path)
+            shutil.rmtree(args.data_path)
     duration = time.time() - start
     print(f"Done. (in {duration:.2f}s)")
 
