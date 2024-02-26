@@ -1,6 +1,5 @@
 # NSW Land Sales Data
 
-Archive of land sales data available from: https://valuation.property.nsw.gov.au/embed/propertySalesInformation
+`nsw_land.py` downloads the historical land sale data for NSW and normalizes the entire dataset into a single massive csv.
 
-~~It is automatically updated by github actions on a weekly basis.~~
-Github actions are currently broken.
+Use at your own risk (i.e. have at least a few GB free on your hard-drive).
