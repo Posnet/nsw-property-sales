@@ -488,6 +488,15 @@ def parse_sales_data_file(file_path):
     counter["records"] = sum(counter.values())
     # validate = {k.split("_")[1]: int(v) for k, v in data["FOOTER"].items()}
     # assert all(counter[k] == validate[k] for k in validate), (file_path, counter, validate)
+    if len(data["SALES"]) > 0:
+        last = data["SALES"][-1]
+        last_desc = last["property_description"]
+        if isinstance(last_desc, list):
+            last["property_description"] = "".join(last_desc)
+
+        last_perch = last["purchaser_vendor"]
+        if isinstance(last_perch, list):
+            last["purchaser_vendor"] = ", ".join(last_perch)
     return data
 
 
