@@ -1,6 +1,5 @@
 #!/bin/bash
 set -Eeuo pipefail
-shopt -s globstar
 
 when=$(date)
 echo "Fetching sales data (for %s)" "$when"
@@ -18,23 +17,22 @@ mv -f ./*.pdf pdfs/
 
 mv -f ./*.zip extracted/
 
-for name in ./extracted/**/*.zip; do
-	echo "extracting: $name"
-	unzip -quo "$name" -d extracted || true
-	rm "$name"
+for name in ./extracted/*.zip; do
+    echo "extracting: $name"
+    unzip -quo "$name" -d extracted || true
+    rm "$name"
 done
 
-for name in ./extracted/**/*.zip; do
-	echo "extracting: $name"
-	unzip -quo "$name" -d extracted || true
-	rm "$name"
+for name in ./extracted/*.zip; do
+    echo "extracting: $name"
+    unzip -quo "$name" -d extracted || true
+    rm "$name"
 done
 
+echo "Moving data to final location"
 find extracted -name "*.DAT" -exec mv -f {} data/ \;
 
 rm -rf extracted
 
-tar -czvf data.tgz data
-
-printf "Fetched on: %s\n" "$when" > when.txt
+printf "Fetched on: %s\n" "$when"
 
