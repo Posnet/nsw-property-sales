@@ -575,18 +575,18 @@ def main():
 
     try:
         when = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"NSW Bulk property sales information downloader. (as of{when})")
-        print(f"Fetching sales data (to {args.download_path}).")
+        print(f"NSW Bulk property sales information downloader. (as of {when})")
+        print(f"Fetching sales data (to '{args.download_path}').")
         fetch_data(args.download_path, args.pdf_path)
-        print(f"Extracting data files. (to {args.data_path})")
+        print(f"Extracting data files. (to '{args.data_path}')")
         process_downloaded_files(args.download_path, args.data_path)
-        print(f"Converting to CSV. (to {args.csv_path})")
+        print(f"Converting to CSV. (to '{args.csv_path}')")
         data_to_csv(args.data_path, args.csv_path)
-        print(f"Writing manifest. (to {args.manifest_path})")
+        print(f"Writing manifest. (to '{args.manifest_path}')")
         write_manifest(args.manifest_path, when)
     finally:
         if not args.keep_raw_files:
-            print(f"Removing raw files. ({args.download_path}, {args.data_path})")
+            print(f"Removing raw files. ('{args.download_path}', '{args.data_path}')")
             shutil.rmtree(args.download_path)
             shutil.rmtree(args.data_path)
     duration = time.time() - start
