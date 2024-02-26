@@ -651,6 +651,8 @@ def main():
     finally:
         if not args.keep_raw_files:
             print(f"Removing raw files. ('{args.download_path}', '{args.data_path}')")
+            assert len(args.download_path) > 5, "download_path short, not deleting"
+            assert len(args.data_path) > 5, "data_path short, not deleting"
             shutil.rmtree(args.download_path)
             shutil.rmtree(args.data_path)
     duration = time.time() - start
