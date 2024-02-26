@@ -13,7 +13,6 @@ import argparse
 
 BASE_URL = "https://valuation.property.nsw.gov.au/embed/propertySalesInformation"
 
-
 CODE_TO_ZONE = {
     "A": "Residential",
     "B": "Business",
@@ -180,6 +179,8 @@ COLUMNS = (
     "filetype",
 )
 
+MANIFEST = []
+
 
 def progress_tracker(total=None, operation="Working"):
     progress = [0]
@@ -257,6 +258,7 @@ def download_file(url, directory, progress_update):
                     downloaded_size += len(data)
                     progress_update(downloaded_size, step=0)
             progress_update(0, step=1)
+            manifest.append(file_path)
 
         return file_path, downloaded_size
     except error.HTTPError as e:
@@ -300,14 +302,11 @@ def extract_zip(file_path, target_path):
 def process_downloaded_files(extracted_path, data_path):
     tracker = progress_tracker(None, "Extracting")
     zip_found = True
-    seen = set()
     while zip_found:
         zip_found = False
         for root, _, files in os.walk(extracted_path):
             for file in files:
                 src_path = os.path.join(root, file)
-                if src_path not in seen:
-                    seen.add(src_path)
                 if file.endswith(".DAT") or file.endswith(".zip"):
                     dst_dir = data_path if file.endswith(".DAT") else extracted_path
                     index = 0
@@ -317,6 +316,7 @@ def process_downloaded_files(extracted_path, data_path):
                         dst_path = os.path.join(dst_dir, f"{base}_{index}{extension}")
                         index += 1
                     shutil.move(src_path, dst_path)
+                    MANIFEST.append(dst_path)
                     tracker(Path(dst_path).stat().st_size)
                     if file.endswith(".zip"):
                         extract_zip(dst_path, extracted_path)
@@ -519,6 +519,7 @@ def data_to_csv(base, outpath):
             for record in res:
                 writer.writerow(record)
                 tracker(path.stat().st_size)
+    MANIFEST.append(output)
 
 
 def main():
@@ -538,7 +539,7 @@ def main():
     parser.add_argument(
         "--csv_path",
         type=str,
-        default="./land_values.csv",
+        default="./land_value.csv",
         help="Path to output CSV file",
     )
     parser.add_argument(
@@ -549,6 +550,12 @@ def main():
         action="store_true",
         default=False,
         help="Keep the raw data directories",
+    )
+    parser.add_argument(
+        "--manifest_file",
+        type=str,
+        default="./manifest.txt",
+        help="A manifest of all files donwloaded, and parsed.",
     )
 
     args = parser.parse_args()
@@ -561,14 +568,20 @@ def main():
     csv_path = Path(args.csv_path)
     pdf_path = Path(args.pdf_path)
     pdf_path.mkdir(parents=True, exist_ok=True)
+    manifest_path = Path(args.manifest_path)
 
     try:
-        print(f"Fetching sales data (as of {when}).")
+        print(f"Fetching sales data (as of {when}).", flush=True)
         fetch_data(download_path, pdf_path)
-        print("Extracting data files.")
+        print("Extracting data files.", flush=True)
         process_downloaded_files(download_path, data_path)
-        print(f"Converting to CSV. ({csv_path})")
+        print(f"Converting to CSV. ({csv_path})", flush=True)
         data_to_csv(data_path, csv_path)
+        MANIFEST.append(manifest_path)
+        with open(manifest_path, 'w') as f:
+            f.write(f"NSW Land Data Manifest (as of {when})\n")
+            for line in MANIFEST:
+                f.write(line + "\n")
     finally:
         if not args.keep_raw_files:
             print("Removing raw files.")
