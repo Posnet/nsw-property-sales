@@ -2,119 +2,16 @@
 import os
 import shutil
 import zipfile
-import hashlib
+import csv
 from datetime import datetime
 from urllib import request, error
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 import time
 import re
+import argparse
 
-
-def download_file(url, directory, progress_update):
-    try:
-        file_name = url.split("/")[-1]
-        file_path = os.path.join(directory, file_name)
-        with request.urlopen(url) as response, open(file_path, "wb") as out_file:
-            data = response.read()
-            out_file.write(data)
-        progress_update(len(data))
-        return file_path, len(data)
-    except error.HTTPError as e:
-        print(f"HTTP Error: {e.code} {e.reason} {url}")
-    except error.URLError as e:
-        print(f"URL Error: {e.reason} {url}")
-    return None, 0
-
-
-def extract_zip(file_path, target_path):
-    try:
-        with zipfile.ZipFile(file_path, "r") as zip_ref:
-            zip_ref.extractall(target_path)
-        os.remove(file_path)
-    except zipfile.BadZipFile:
-        print(f"Failed to extract {file_path}, not a zip file.")
-
-
-def file_hash(file_path):
-    hash_md5 = hashlib.md5()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
-
-
-def progress_tracker(total, operation="Downloading"):
-    progress = [0]
-    bytes_downloaded = [0]
-    start_time = [time.time()]
-
-    def update_progress(_bytes=0):
-        progress[0] += 1
-        elapsed_time = time.time() - start_time[0]
-        percentage = (progress[0] / total) * 100
-        if _bytes is not None:
-            bytes_downloaded[0] += _bytes
-            throughput = (bytes_downloaded[0] / 1024 / 1024) / elapsed_time
-            throughput = f" - {throughput:.2f} MB/s"
-            btotal = bytes_downloaded[0] / 1024 / 1024
-            if btotal > 1024:
-                btotal = f" - {btotal/1024:.2f}GB"
-            else:
-                btotal = f" - {btotal:.1f}MB"
-                
-        else:
-            throughput = ""
-            btotal = ""
-
-        print(
-            f"\r{operation} files: {progress[0]}/{total} ({percentage:.2f}%){throughput}{btotal}",
-            end="",
-            flush=True,
-        )
-        if progress[0] == total:
-            print()
-
-    return update_progress
-
-
-def process_downloaded_files(extracted_path):
-    zip_found = True
-    seen = set()
-    while zip_found:
-        zip_found = False
-        for root, _, files in os.walk(extracted_path):
-            for file in files:
-                src_path = os.path.join(root, file)
-                if src_path not in seen:
-                    print(src_path)
-                    seen.add(src_path)
-                if file.endswith(".DAT") or file.endswith(".zip"):
-                    dst_dir = "data" if file.endswith(".DAT") else extracted_path
-                    index = 0
-                    base, extension = os.path.splitext(file)
-                    dst_path = os.path.join(dst_dir, f"{base}_{index}{extension}")
-                    while os.path.exists(dst_path):
-                        dst_path = os.path.join(dst_dir, f"{base}_{index}{extension}")
-                        index += 1
-                    shutil.move(src_path, dst_path)
-                    if file.endswith(".zip"):
-                        extract_zip(dst_path, extracted_path)
-                        zip_found = True
-
-
-def fetch_sales_data(url, headers):
-    req = request.Request(url, headers=headers)
-    with request.urlopen(req) as response:
-        html = response.read().decode("utf-8")
-    return re.findall('href="([^"]+(zip|pdf))"', html)
-
-
-def setup_directories():
-    directories = ["pdfs", "data", "extracted"]
-    for directory in directories:
-        os.makedirs(directory, exist_ok=True)
-    return directories
+BASE_URL = "https://valuation.property.nsw.gov.au/embed/propertySalesInformation"
 
 
 CODE_TO_ZONE = {
@@ -252,6 +149,179 @@ CODE_TO_DISTRICT = {
     "192": "MOREE PLAINS",
 }
 
+COLUMNS = (
+    "district_code",
+    "district_name",
+    "property_id",
+    "file_datetime",
+    "property_name",
+    "property_unit_number",
+    "property_house_number",
+    "property_street_name",
+    "property_locality",
+    "property_post_code",
+    "area",
+    "area_type",
+    "contract_date",
+    "settlement_date",
+    "purchase_price",
+    "zone_code",
+    "zone_name",
+    "nature_property",
+    "primary_purpose",
+    "strata_number",
+    "component_code",
+    "sale_code",
+    "interest_sale",
+    "dealing_number",
+    "property_description",
+    "purchaser_vendor",
+    "dimensions",
+    "filetype",
+)
+
+
+def progress_tracker(total=None, operation="Working"):
+    progress = [0]
+    bytes_downloaded = [0]
+    start_time = [time.time()]
+
+    def update_progress(_bytes=0, step=1):
+        progress[0] += step
+        elapsed_time = time.time() - start_time[0]
+        if total:
+            percentage = (progress[0] / total) * 100
+            percentage = f"({percentage:.2f}%)"
+            _total = f"/{total}"
+        else:
+            _total = ""
+            percentage = ""
+        if _bytes is not None:
+            bytes_downloaded[0] += _bytes
+            throughput = (bytes_downloaded[0] / 1024 / 1024) / elapsed_time
+            throughput = f" - {throughput:.2f} MB/s"
+            btotal = bytes_downloaded[0] / 1024 / 1024
+            if btotal > 1024:
+                btotal = f" - {btotal/1024:.2f}GB"
+            else:
+                btotal = f" - {btotal:.1f}MB"
+
+        else:
+            throughput = ""
+            btotal = ""
+
+        outstr = (
+            f"\r{operation}: {progress[0]}{_total} {percentage}{throughput}{btotal}"
+        )
+        print(
+            outstr.ljust(80),
+            end="",
+            flush=True,
+        )
+        if total and progress[0] == total:
+            print()
+
+    return update_progress
+
+
+def fetch_sales_data(url, headers):
+    print("Searching for files.")
+    req = request.Request(url, headers=headers)
+    with request.urlopen(req) as response:
+        html = response.read().decode("utf-8")
+    return re.findall('href="([^"]+(zip|pdf))"', html)
+
+
+def download_file(url, directory, progress_update):
+    try:
+        file_name = url.split("/")[-1]
+        file_path = os.path.join(directory, file_name)
+
+        with request.urlopen(url) as response:
+            # Get the total file size from headers if available
+            total_size = response.getheader("Content-Length")
+            if total_size is not None:
+                total_size = int(total_size)
+            else:
+                total_size = 0  # Unknown size
+
+            downloaded_size = 0
+            chunk_size = 1024 * 1024  # 1 MB per chunk
+
+            with open(file_path, "wb") as out_file:
+                while True:
+                    data = response.read(chunk_size)
+                    if not data:
+                        break
+                    out_file.write(data)
+                    downloaded_size += len(data)
+                    progress_update(downloaded_size, step=0)
+            progress_update(0, step=1)
+
+        return file_path, downloaded_size
+    except error.HTTPError as e:
+        print(f"HTTP Error: {e.code} {e.reason} {url}")
+    except error.URLError as e:
+        print(f"URL Error: {e.reason} {url}")
+    return None, 0
+
+
+def fetch_data(download_path, pdf_path):
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+    }
+    links = fetch_sales_data(BASE_URL, headers)
+    tracker = progress_tracker(len(links), "Downloading")
+    futures = []
+    with ThreadPoolExecutor() as executor:
+        for link, fkind in links:
+            if fkind == "pdf":
+                out_path = pdf_path
+            elif fkind == "zip":
+                out_path = download_path
+            else:
+                print("Unknown file type:", fkind)
+                continue
+            futures.append(executor.submit(download_file, link, out_path, tracker))
+        for future in futures:
+            future.result()
+
+
+def extract_zip(file_path, target_path):
+    try:
+        with zipfile.ZipFile(file_path, "r") as zip_ref:
+            zip_ref.extractall(target_path)
+        os.remove(file_path)
+    except zipfile.BadZipFile:
+        print(f"Failed to extract {file_path}, not a zip file.")
+        raise
+
+
+def process_downloaded_files(extracted_path, data_path):
+    tracker = progress_tracker(None, "Extracting")
+    zip_found = True
+    seen = set()
+    while zip_found:
+        zip_found = False
+        for root, _, files in os.walk(extracted_path):
+            for file in files:
+                src_path = os.path.join(root, file)
+                if src_path not in seen:
+                    seen.add(src_path)
+                if file.endswith(".DAT") or file.endswith(".zip"):
+                    dst_dir = data_path if file.endswith(".DAT") else extracted_path
+                    index = 0
+                    base, extension = os.path.splitext(file)
+                    dst_path = os.path.join(dst_dir, f"{base}_{index}{extension}")
+                    while os.path.exists(dst_path):
+                        dst_path = os.path.join(dst_dir, f"{base}_{index}{extension}")
+                        index += 1
+                    shutil.move(src_path, dst_path)
+                    tracker(Path(dst_path).stat().st_size)
+                    if file.endswith(".zip"):
+                        extract_zip(dst_path, extracted_path)
+                        zip_found = True
+
 
 def parse_1990_file(file_path):
     # Initialize containers for different types of records
@@ -358,17 +428,16 @@ def parse_sales_data_file(file_path):
                     "total_D_records": parts[4],
                 }
             elif record_type == "B":  # New sale entry
-                if len(data['SALES']) > 0:
-                    last = data['SALES'][-1]
-                    last_desc = last['property_description']
-                    if isinstance(last_desc, list):  
-                        last['property_description'] = "".join(last_desc)
-                        
-                    last_perch = last['purchaser_vendor']
-                    if isinstance(last_perch, list):  
-                        last['purchaser_vendor'] = ", ".join(last_perch)
-                
-                
+                if len(data["SALES"]) > 0:
+                    last = data["SALES"][-1]
+                    last_desc = last["property_description"]
+                    if isinstance(last_desc, list):
+                        last["property_description"] = "".join(last_desc)
+
+                    last_perch = last["purchaser_vendor"]
+                    if isinstance(last_perch, list):
+                        last["purchaser_vendor"] = ", ".join(last_perch)
+
                 area_type = {"M": "Square Meters", "H": "Hectares"}.get(
                     parts[12], parts[12]
                 )
@@ -418,7 +487,7 @@ def parse_sales_data_file(file_path):
                 sales_index[key]["purchaser_vendor"].append(purchaser_vendor)
 
     counter["records"] = sum(counter.values())
-    validate = {k.split("_")[1]: int(v) for k, v in data["FOOTER"].items()}
+    # validate = {k.split("_")[1]: int(v) for k, v in data["FOOTER"].items()}
     # assert all(counter[k] == validate[k] for k in validate), (file_path, counter, validate)
     return data
 
@@ -435,50 +504,77 @@ def handle_path(path):
             res = []
         return res
     except:
-        print(file)
+        print("Failed on:", path)
         raise
 
 
-def load_all_data(base):
+def data_to_csv(base, outpath):
     paths = list(Path(base).glob("*.DAT"))
     tracker = progress_tracker(len(paths), "Parsing")
-    for path in paths:
-        res = handle_path(path)
-        for record in res:
-            yield record
-        tracker(path.stat().st_size)
+    with open(outpath, "w", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=COLUMNS)
+        writer.writeheader()
+        for path in paths:
+            res = handle_path(path)
+            for record in res:
+                writer.writerow(record)
+                tracker(path.stat().st_size)
+
 
 def main():
+    parser = argparse.ArgumentParser(description="Process some integers.")
+    parser.add_argument(
+        "--download_path",
+        type=str,
+        default="./downloads",
+        help="Path where downloads will be stored",
+    )
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default="./extracted",
+        help="Path where extracted data will be stored",
+    )
+    parser.add_argument(
+        "--csv_path",
+        type=str,
+        default="./land_values.csv",
+        help="Path to output CSV file",
+    )
+    parser.add_argument(
+        "--pdf_path", type=str, default="./pdfs", help="Path to PDF files"
+    )
+    parser.add_argument(
+        "--keep_raw_files",
+        action="store_true",
+        default=False,
+        help="Keep the raw data directories",
+    )
+
+    args = parser.parse_args()
+
     when = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"Fetching sales data (for {when})")
+    download_path = Path(args.download_path)
+    download_path.mkdir(parents=True, exist_ok=True)
+    data_path = Path(args.data_path)
+    data_path.mkdir(parents=True, exist_ok=True)
+    csv_path = Path(args.csv_path)
+    pdf_path = Path(args.pdf_path)
+    pdf_path.mkdir(parents=True, exist_ok=True)
 
-    url = "https://valuation.property.nsw.gov.au/embed/propertySalesInformation"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-    }
-    links = fetch_sales_data(url, headers)
-    setup_directories()
-
-    update_progress = progress_tracker(len(links))
-
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [
-            executor.submit(download_file, link[0], "extracted", update_progress)
-            for link in links
-        ]
-        for future in futures:
-            future.result()
-
-    process_downloaded_files("extracted")
-    shutil.rmtree("extracted")
-    print(f"Fetched on: {when}")
+    try:
+        print(f"Fetching sales data (as of {when}).")
+        fetch_data(download_path, pdf_path)
+        print("Extracting data files.")
+        process_downloaded_files(download_path, data_path)
+        print(f"Converting to CSV. ({csv_path})")
+        data_to_csv(data_path, csv_path)
+    finally:
+        if not args.keep_raw_files:
+            print("Removing raw files.")
+            shutil.rmtree(download_path)
+            shutil.rmtree(data_path)
 
 
 if __name__ == "__main__":
-    keyset = set()
-    from pprint import pprint
-    for record in load_all_data("test/data/"):
-        keyset.add(tuple(sorted(record.keys())))
-        if len(keyset) > 1:
-            pprint(keyset)
-            break
+    main()
