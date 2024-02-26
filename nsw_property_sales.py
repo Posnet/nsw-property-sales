@@ -254,7 +254,7 @@ def download_file(url, directory, progress_update):
                         break
                     out_file.write(data)
                     downloaded_size += len(data)
-                    progress_update(downloaded_size, step=0)
+                    progress_update(len(data), step=0)
             progress_update(0, step=1)
             MANIFEST.append(file_path)
 
